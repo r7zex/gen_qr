@@ -2,11 +2,10 @@
 from __future__ import annotations
 
 import argparse
+from importlib import import_module
 from pathlib import Path
-from typing import Iterable, Tuple
-
-import qrcode
-from qrcode.constants import ERROR_CORRECT_H
+from collections.abc import Sequence
+from typing import Tuple, Type
 
 from PIL import Image, UnidentifiedImageError
 
@@ -51,8 +50,77 @@ class AssetBundle:
         return cls(module, finder_inner, finder_outer)
 
 
-def create_qr_matrix(data: str) -> Iterable[Iterable[bool]]:
-    qr = qrcode.QRCode(error_correction=ERROR_CORRECT_H, box_size=1, border=4)
+try:
+    RESAMPLE_FILTER = Image.Resampling.LANCZOS
+except AttributeError:  # Pillow < 9.1
+    RESAMPLE_FILTER = Image.LANCZOS  # type: ignore[attr-defined]
+
+
+def _load_qrcode_backend() -> Tuple[Type[object], int]:
+    """Locate a QRCode implementation from qrcode or django_qrcode."""
+
+    try:
+        from qrcode.main import QRCode as qrcode_cls  # type: ignore
+        from qrcode.constants import ERROR_CORRECT_H as error_constant  # type: ignore
+    except ModuleNotFoundError:
+        qrcode_cls = None
+        error_constant = None
+    else:
+        return qrcode_cls, error_constant
+
+    module_candidates = (
+        "django_qrcode.qrcode",
+        "django_qrcode.qrcode.qrcode",
+        "django_qrcode",
+    )
+
+    for module_name in module_candidates:
+        try:
+            module = import_module(module_name)
+        except ModuleNotFoundError:
+            continue
+
+        qr_cls = getattr(module, "QRCode", None)
+        constants = getattr(module, "constants", None)
+
+        if qr_cls is None and hasattr(module, "qrcode"):
+            nested_module = getattr(module, "qrcode")
+            qr_cls = getattr(nested_module, "QRCode", None)
+            constants = getattr(nested_module, "constants", constants)
+            module = nested_module
+
+        if qr_cls is None:
+            try:
+                nested_module = import_module(f"{module.__name__}.qrcode")
+            except ModuleNotFoundError:
+                nested_module = None
+            if nested_module is not None:
+                qr_cls = getattr(nested_module, "QRCode", None)
+                constants = getattr(nested_module, "constants", constants)
+                module = nested_module
+
+        if qr_cls is None:
+            continue
+
+        if constants is None:
+            try:
+                constants = import_module(f"{module.__name__}.constants")
+            except ModuleNotFoundError:
+                constants = None
+
+        error_constant = getattr(constants, "ERROR_CORRECT_H", 2)
+        return qr_cls, error_constant
+
+    raise ModuleNotFoundError(
+        "Unable to locate a QRCode backend. Install either 'qrcode' or 'django_qrcode'."
+    )
+
+
+QRCode, ERROR_CORRECT_H = _load_qrcode_backend()
+
+
+def create_qr_matrix(data: str) -> list[list[bool]]:
+    qr = QRCode(error_correction=ERROR_CORRECT_H, box_size=1, border=4)
     qr.add_data(data)
     qr.make(fit=True)
     return qr.get_matrix()
@@ -66,10 +134,10 @@ def is_finder_module(row: int, col: int, size: int) -> bool:
     return False
 
 
-def paste_modules(canvas: Image.Image, matrix: Iterable[Iterable[bool]], assets: AssetBundle, margin: int) -> None:
+def paste_modules(canvas: Image.Image, matrix: Sequence[Sequence[bool]], assets: AssetBundle, margin: int) -> None:
     module_img = assets.module
     module_size = assets.module_size
-    sized_module = module_img.resize((module_size, module_size), Image.LANCZOS)
+    sized_module = module_img.resize((module_size, module_size), RESAMPLE_FILTER)
     for row_index, row in enumerate(matrix):
         for col_index, cell in enumerate(row):
             if not cell or is_finder_module(row_index, col_index, len(matrix)):
@@ -91,7 +159,7 @@ def paste_finder_patterns(canvas: Image.Image, matrix_size: int, assets: AssetBu
         top_left_x = margin + column_multiplier * (matrix_size - 7) * module_size
         top_left_y = margin + row_multiplier * (matrix_size - 7) * module_size
         if outer_offset >= 0:
-            outer_image = outer.resize((finder_span, finder_span), Image.LANCZOS)
+            outer_image = outer.resize((finder_span, finder_span), RESAMPLE_FILTER)
             outer_position = (top_left_x, top_left_y)
         else:
             outer_image = outer
@@ -99,7 +167,10 @@ def paste_finder_patterns(canvas: Image.Image, matrix_size: int, assets: AssetBu
         canvas.alpha_composite(outer_image, outer_position)
 
         if inner_offset >= 0:
-            inner_image = inner.resize((finder_span - 2 * inner_offset, finder_span - 2 * inner_offset), Image.LANCZOS)
+            inner_image = inner.resize(
+                (finder_span - 2 * inner_offset, finder_span - 2 * inner_offset),
+                RESAMPLE_FILTER,
+            )
             inner_position = (
                 top_left_x + inner_offset,
                 top_left_y + inner_offset,
@@ -129,7 +200,7 @@ def generate_qr(
     background_color: Tuple[int, int, int, int],
 ) -> Path:
     assets = AssetBundle.from_paths(module_asset, finder_inner_asset, finder_outer_asset)
-    matrix = list(create_qr_matrix(data))
+    matrix = create_qr_matrix(data)
     canvas, margin = build_canvas(len(matrix), assets, background_color)
     paste_modules(canvas, matrix, assets, margin)
     paste_finder_patterns(canvas, len(matrix), assets, margin)
