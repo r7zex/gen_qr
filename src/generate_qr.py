@@ -2,12 +2,10 @@
 from __future__ import annotations
 
 import argparse
+from importlib import import_module
 from pathlib import Path
 from collections.abc import Sequence
-from typing import Tuple
-
-from qrcode.main import QRCode
-from qrcode.constants import ERROR_CORRECT_H
+from typing import Tuple, Type
 
 from PIL import Image, UnidentifiedImageError
 
@@ -56,6 +54,69 @@ try:
     RESAMPLE_FILTER = Image.Resampling.LANCZOS
 except AttributeError:  # Pillow < 9.1
     RESAMPLE_FILTER = Image.LANCZOS  # type: ignore[attr-defined]
+
+
+def _load_qrcode_backend() -> Tuple[Type[object], int]:
+    """Locate a QRCode implementation from qrcode or django_qrcode."""
+
+    try:
+        from qrcode.main import QRCode as qrcode_cls  # type: ignore
+        from qrcode.constants import ERROR_CORRECT_H as error_constant  # type: ignore
+    except ModuleNotFoundError:
+        qrcode_cls = None
+        error_constant = None
+    else:
+        return qrcode_cls, error_constant
+
+    module_candidates = (
+        "django_qrcode.qrcode",
+        "django_qrcode.qrcode.qrcode",
+        "django_qrcode",
+    )
+
+    for module_name in module_candidates:
+        try:
+            module = import_module(module_name)
+        except ModuleNotFoundError:
+            continue
+
+        qr_cls = getattr(module, "QRCode", None)
+        constants = getattr(module, "constants", None)
+
+        if qr_cls is None and hasattr(module, "qrcode"):
+            nested_module = getattr(module, "qrcode")
+            qr_cls = getattr(nested_module, "QRCode", None)
+            constants = getattr(nested_module, "constants", constants)
+            module = nested_module
+
+        if qr_cls is None:
+            try:
+                nested_module = import_module(f"{module.__name__}.qrcode")
+            except ModuleNotFoundError:
+                nested_module = None
+            if nested_module is not None:
+                qr_cls = getattr(nested_module, "QRCode", None)
+                constants = getattr(nested_module, "constants", constants)
+                module = nested_module
+
+        if qr_cls is None:
+            continue
+
+        if constants is None:
+            try:
+                constants = import_module(f"{module.__name__}.constants")
+            except ModuleNotFoundError:
+                constants = None
+
+        error_constant = getattr(constants, "ERROR_CORRECT_H", 2)
+        return qr_cls, error_constant
+
+    raise ModuleNotFoundError(
+        "Unable to locate a QRCode backend. Install either 'qrcode' or 'django_qrcode'."
+    )
+
+
+QRCode, ERROR_CORRECT_H = _load_qrcode_backend()
 
 
 def create_qr_matrix(data: str) -> list[list[bool]]:
