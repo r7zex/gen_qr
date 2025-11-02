@@ -1,0 +1,46 @@
+# Генератор кастомных QR-кодов
+
+Утилита позволяет собрать QR-код для любой ссылки и оформить его с помощью
+собственных изображений:
+
+- **Точки (data modules)** — PNG 40×40 пикселей.
+- **Внутренняя часть больших угловых точек** — PNG 120×120 пикселей.
+- **Обводка (наружная часть) больших угловых точек** — PNG 300×300 пикселей.
+
+Все ассеты разложены по папкам в каталоге [`assets/`](assets/):
+
+```
+assets/
+├── modules/        # дизайн обычных точек (40×40)
+├── finder_inner/   # внутренняя часть угловых точек (120×120)
+└── finder_outer/   # наружная часть угловых точек (300×300)
+```
+
+По умолчанию в репозитории лежат текстовые заглушки `default.txt`, которые
+нужно заменить своими PNG-изображениями или указать пути к реальным файлам
+через параметры CLI. Скрипт проверяет расширение и сообщит об ошибке, если
+переданы заглушки вместо реальных PNG.
+
+## Установка зависимостей
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+## Запуск
+
+```bash
+python src/generate_qr.py "https://example.com" \
+    --output output/custom.png \
+    --module assets/modules/default.txt \
+    --finder-inner assets/finder_inner/default.txt \
+    --finder-outer assets/finder_outer/default.txt \
+    --background "#FFFFFFFF"
+```
+
+Путь в `--module`, `--finder-inner` и `--finder-outer` можно заменить на свои
+изображения. Цвет фона передаётся в формате `#RRGGBB` или `#RRGGBBAA`.
+
+Сгенерированный файл появится в указанном пути (`output/custom.png`).
