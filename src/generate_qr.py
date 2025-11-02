@@ -12,13 +12,15 @@ from PIL import Image, UnidentifiedImageError
 FinderPosition = Tuple[int, int]
 
 
-FINDER_POSITIONS: Tuple[FinderPosition, ...] = ((0, 0), (1, 0), (0, 1))
-"""Finder pattern positions expressed as (column_multiplier, row_multiplier).
+def finder_pattern_origins(matrix_size: int, border: int) -> Tuple[FinderPosition, ...]:
+    """Return the top-left indices for the three finder patterns."""
 
-The QR matrix origin is the top-left module. Each finder pattern occupies a
-7x7 region. The positions above represent top-left, top-right, and
-bottom-left patterns respectively.
-"""
+    offset = matrix_size - border - 7
+    return (
+        (border, border),
+        (offset, border),
+        (border, offset),
+    )
 
 
 DEFAULT_OUTPUT_DIR = Path("output")
@@ -138,33 +140,45 @@ def _load_qrcode_backend() -> Tuple[QRCodeFactory, int]:
 QRCode, ERROR_CORRECT_H = _load_qrcode_backend()
 
 
-def create_qr_matrix(data: str) -> list[list[bool]]:
+def create_qr_matrix(data: str) -> Tuple[list[list[bool]], int]:
     qr = QRCode(error_correction=ERROR_CORRECT_H, box_size=1, border=4)
     qr.add_data(data)
     qr.make(fit=True)
-    return qr.get_matrix()
+    matrix = qr.get_matrix()
+    return matrix, int(qr.border)
 
 
-def is_finder_module(row: int, col: int, size: int) -> bool:
-    finder_bounds = ((0, 0), (size - 7, 0), (0, size - 7))
-    for origin_col, origin_row in finder_bounds:
+def is_finder_module(row: int, col: int, size: int, border: int) -> bool:
+    for origin_col, origin_row in finder_pattern_origins(size, border):
         if origin_row <= row < origin_row + 7 and origin_col <= col < origin_col + 7:
             return True
     return False
 
 
-def paste_modules(canvas: Image.Image, matrix: Sequence[Sequence[bool]], assets: AssetBundle, margin: int) -> None:
+def paste_modules(
+    canvas: Image.Image,
+    matrix: Sequence[Sequence[bool]],
+    assets: AssetBundle,
+    margin: int,
+    border: int,
+) -> None:
     module_img = assets.module
     module_size = assets.module_size
     sized_module = module_img.resize((module_size, module_size), RESAMPLE_FILTER)
     for row_index, row in enumerate(matrix):
         for col_index, cell in enumerate(row):
-            if not cell or is_finder_module(row_index, col_index, len(matrix)):
+            if not cell or is_finder_module(row_index, col_index, len(matrix), border):
                 continue
             canvas.alpha_composite(sized_module, (margin + col_index * module_size, margin + row_index * module_size))
 
 
-def paste_finder_patterns(canvas: Image.Image, matrix_size: int, assets: AssetBundle, margin: int) -> None:
+def paste_finder_patterns(
+    canvas: Image.Image,
+    matrix_size: int,
+    assets: AssetBundle,
+    margin: int,
+    border: int,
+) -> None:
     module_size = assets.module_size
     finder_span = 7 * module_size
 
@@ -174,9 +188,9 @@ def paste_finder_patterns(canvas: Image.Image, matrix_size: int, assets: AssetBu
     outer_offset = (finder_span - outer.width) // 2
     inner_offset = (finder_span - inner.width) // 2
 
-    for column_multiplier, row_multiplier in FINDER_POSITIONS:
-        top_left_x = margin + column_multiplier * (matrix_size - 7) * module_size
-        top_left_y = margin + row_multiplier * (matrix_size - 7) * module_size
+    for origin_col, origin_row in finder_pattern_origins(matrix_size, border):
+        top_left_x = margin + origin_col * module_size
+        top_left_y = margin + origin_row * module_size
         if outer_offset >= 0:
             outer_image = outer.resize((finder_span, finder_span), RESAMPLE_FILTER)
             outer_position = (top_left_x, top_left_y)
@@ -219,10 +233,10 @@ def generate_qr(
     background_color: Tuple[int, int, int, int],
 ) -> Path:
     assets = AssetBundle.from_paths(module_asset, finder_inner_asset, finder_outer_asset)
-    matrix = create_qr_matrix(data)
+    matrix, border = create_qr_matrix(data)
     canvas, margin = build_canvas(len(matrix), assets, background_color)
-    paste_modules(canvas, matrix, assets, margin)
-    paste_finder_patterns(canvas, len(matrix), assets, margin)
+    paste_modules(canvas, matrix, assets, margin, border)
+    paste_finder_patterns(canvas, len(matrix), assets, margin, border)
 
     output.parent.mkdir(parents=True, exist_ok=True)
     canvas.save(output)
