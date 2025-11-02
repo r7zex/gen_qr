@@ -3,17 +3,12 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import List, Sequence, Tuple
+from typing import Iterable, Tuple
 
-from qrcode.main import QRCode
+import qrcode
 from qrcode.constants import ERROR_CORRECT_H
 
 from PIL import Image, UnidentifiedImageError
-
-try:
-    Resampling = Image.Resampling
-except AttributeError:  # Pillow < 9.1
-    Resampling = Image
 
 FinderPosition = Tuple[int, int]
 
@@ -39,9 +34,7 @@ class AssetBundle:
             raise ValueError("Module asset must be square.")
 
     @classmethod
-    def from_paths(
-        cls, module_path: Path, finder_inner_path: Path, finder_outer_path: Path
-    ) -> "AssetBundle":
+    def from_paths(cls, module_path: Path, finder_inner_path: Path, finder_outer_path: Path) -> "AssetBundle":
         for path in (module_path, finder_inner_path, finder_outer_path):
             if path.suffix.lower() != ".png":
                 raise ValueError(
@@ -58,12 +51,11 @@ class AssetBundle:
         return cls(module, finder_inner, finder_outer)
 
 
-def create_qr_matrix(data: str) -> List[List[bool]]:
-    qr = QRCode(error_correction=ERROR_CORRECT_H, box_size=1, border=4)
+def create_qr_matrix(data: str) -> Iterable[Iterable[bool]]:
+    qr = qrcode.QRCode(error_correction=ERROR_CORRECT_H, box_size=1, border=4)
     qr.add_data(data)
     qr.make(fit=True)
-    matrix: List[List[bool]] = [list(row) for row in qr.get_matrix()]
-    return matrix
+    return qr.get_matrix()
 
 
 def is_finder_module(row: int, col: int, size: int) -> bool:
@@ -74,12 +66,10 @@ def is_finder_module(row: int, col: int, size: int) -> bool:
     return False
 
 
-def paste_modules(
-    canvas: Image.Image, matrix: Sequence[Sequence[bool]], assets: AssetBundle, margin: int
-) -> None:
+def paste_modules(canvas: Image.Image, matrix: Iterable[Iterable[bool]], assets: AssetBundle, margin: int) -> None:
     module_img = assets.module
     module_size = assets.module_size
-    sized_module = module_img.resize((module_size, module_size), Resampling.LANCZOS)
+    sized_module = module_img.resize((module_size, module_size), Image.LANCZOS)
     for row_index, row in enumerate(matrix):
         for col_index, cell in enumerate(row):
             if not cell or is_finder_module(row_index, col_index, len(matrix)):
@@ -101,7 +91,7 @@ def paste_finder_patterns(canvas: Image.Image, matrix_size: int, assets: AssetBu
         top_left_x = margin + column_multiplier * (matrix_size - 7) * module_size
         top_left_y = margin + row_multiplier * (matrix_size - 7) * module_size
         if outer_offset >= 0:
-            outer_image = outer.resize((finder_span, finder_span), Resampling.LANCZOS)
+            outer_image = outer.resize((finder_span, finder_span), Image.LANCZOS)
             outer_position = (top_left_x, top_left_y)
         else:
             outer_image = outer
@@ -109,7 +99,7 @@ def paste_finder_patterns(canvas: Image.Image, matrix_size: int, assets: AssetBu
         canvas.alpha_composite(outer_image, outer_position)
 
         if inner_offset >= 0:
-            inner_image = inner.resize((finder_span - 2 * inner_offset, finder_span - 2 * inner_offset), Resampling.LANCZOS)
+            inner_image = inner.resize((finder_span - 2 * inner_offset, finder_span - 2 * inner_offset), Image.LANCZOS)
             inner_position = (
                 top_left_x + inner_offset,
                 top_left_y + inner_offset,
