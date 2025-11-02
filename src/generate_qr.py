@@ -5,7 +5,7 @@ import argparse
 from importlib import import_module
 from pathlib import Path
 from collections.abc import Sequence
-from typing import Tuple, Type
+from typing import Callable, Protocol, Tuple, cast
 
 from PIL import Image, UnidentifiedImageError
 
@@ -19,6 +19,9 @@ The QR matrix origin is the top-left module. Each finder pattern occupies a
 7x7 region. The positions above represent top-left, top-right, and
 bottom-left patterns respectively.
 """
+
+
+DEFAULT_OUTPUT_DIR = Path("output")
 
 
 class AssetBundle:
@@ -56,17 +59,33 @@ except AttributeError:  # Pillow < 9.1
     RESAMPLE_FILTER = Image.LANCZOS  # type: ignore[attr-defined]
 
 
-def _load_qrcode_backend() -> Tuple[Type[object], int]:
+class QRCodeLike(Protocol):
+    """Protocol describing the subset of QRCode API that we rely on."""
+
+    def add_data(self, data: str) -> None:
+        """Add data payload to the QR code."""
+
+    def make(self, fit: bool = ...) -> None:
+        """Finalize the QR code matrix generation."""
+
+    def get_matrix(self) -> list[list[bool]]:
+        """Return the generated matrix."""
+
+
+QRCodeFactory = Callable[..., QRCodeLike]
+
+
+def _load_qrcode_backend() -> Tuple[QRCodeFactory, int]:
     """Locate a QRCode implementation from qrcode or django_qrcode."""
 
     try:
         from qrcode.main import QRCode as qrcode_cls  # type: ignore
-        from qrcode.constants import ERROR_CORRECT_H as error_constant  # type: ignore
+        from qrcode.constants import ERROR_CORRECT_H  # type: ignore
     except ModuleNotFoundError:
         qrcode_cls = None
         error_constant = None
     else:
-        return qrcode_cls, error_constant
+        return cast(QRCodeFactory, qrcode_cls), int(ERROR_CORRECT_H)
 
     module_candidates = (
         "django_qrcode.qrcode",
@@ -108,8 +127,8 @@ def _load_qrcode_backend() -> Tuple[Type[object], int]:
             except ModuleNotFoundError:
                 constants = None
 
-        error_constant = getattr(constants, "ERROR_CORRECT_H", 2)
-        return qr_cls, error_constant
+        error_constant = int(getattr(constants, "ERROR_CORRECT_H", 2))
+        return cast(QRCodeFactory, qr_cls), error_constant
 
     raise ModuleNotFoundError(
         "Unable to locate a QRCode backend. Install either 'qrcode' or 'django_qrcode'."
@@ -227,7 +246,12 @@ def parse_color(value: str) -> Tuple[int, int, int, int]:
 def build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Generate a QR code with custom module assets")
     parser.add_argument("url", help="URL to encode into the QR code")
-    parser.add_argument("--output", default="output/qr.png", type=Path, help="Where to write the generated PNG")
+    parser.add_argument(
+        "--output",
+        default=DEFAULT_OUTPUT_DIR / "qr.png",
+        type=Path,
+        help="Where to write the generated PNG",
+    )
     parser.add_argument(
         "--module",
         default=Path("assets/modules/default.txt"),
