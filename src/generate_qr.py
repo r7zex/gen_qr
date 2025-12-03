@@ -38,6 +38,28 @@ class AssetBundle:
         if self.module.height != self.module_size:
             raise ValueError("Module asset must be square.")
 
+    def resized(self, scale: float) -> "AssetBundle":
+        """Return a new bundle with all assets scaled by *scale*.
+
+        The resulting assets preserve their aspect ratio. Sizes are rounded to
+        the nearest integer and clamped to a minimum of 1px to avoid zero-sized
+        images when heavily downscaling.
+        """
+
+        if scale == 1.0:
+            return self
+
+        def _resize(image: Image.Image) -> Image.Image:
+            width = max(1, int(round(image.width * scale)))
+            height = max(1, int(round(image.height * scale)))
+            return image.resize((width, height), RESAMPLE_FILTER)
+
+        return AssetBundle(
+            _resize(self.module),
+            _resize(self.finder_inner),
+            _resize(self.finder_outer),
+        )
+
     @classmethod
     def from_paths(cls, module_path: Path, finder_inner_path: Path, finder_outer_path: Path) -> "AssetBundle":
         for path in (module_path, finder_inner_path, finder_outer_path):
@@ -174,24 +196,11 @@ def create_qr_matrix(data: str, *, version: int | None = None) -> Tuple[list[lis
 
     try:
         qr.make(fit=version is None)
-    except DataOverflowError as exc:
+    except DataOverflowError:
         auto_qr = QRCode(error_correction=ERROR_CORRECT_H, box_size=1, border=4)
         auto_qr.add_data(data)
         auto_qr.make(fit=True)
-
-        suggested_version = getattr(auto_qr, "version", None)
-        if suggested_version is None:
-            raise ValueError("Данные не помещаются в выбранный размер QR-кода.") from exc
-
-        requested_modules = version_to_modules(int(version or 1))
-        required_modules = version_to_modules(int(suggested_version))
-        raise ValueError(
-            (
-                "Данные не помещаются в выбранный размер QR (%dx%d). "
-                "Увеличьте матрицу до минимум %dx%d или сократите данные."
-            )
-            % (requested_modules, requested_modules, required_modules, required_modules)
-        ) from exc
+        qr = auto_qr
 
     matrix = qr.get_matrix()
     return matrix, int(qr.border)
@@ -286,6 +295,11 @@ def generate_qr(
     assets = AssetBundle.from_paths(module_asset, finder_inner_asset, finder_outer_asset)
     matrix_version = modules_to_version(matrix_modules) if matrix_modules is not None else None
     matrix, border = create_qr_matrix(data, version=matrix_version)
+
+    if matrix_modules is not None and matrix_modules != len(matrix):
+        scale = matrix_modules / len(matrix)
+        assets = assets.resized(scale)
+
     canvas, margin = build_canvas(len(matrix), assets, background_color)
     paste_modules(canvas, matrix, assets, margin, border)
     paste_finder_patterns(canvas, len(matrix), assets, margin, border)
