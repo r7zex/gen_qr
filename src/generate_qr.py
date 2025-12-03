@@ -243,41 +243,28 @@ def paste_finder_patterns(
     outer = assets.finder_outer
     inner = assets.finder_inner
 
-    outer_offset = (finder_span - outer.width) // 2
-    inner_offset = (finder_span - inner.width) // 2
-
     for origin_col, origin_row in finder_pattern_origins(matrix_size, border):
         top_left_x = margin + origin_col * module_size
         top_left_y = margin + origin_row * module_size
-        if outer_offset >= 0:
-            outer_image = outer.resize((finder_span, finder_span), RESAMPLE_FILTER)
-            outer_position = (top_left_x, top_left_y)
-        else:
-            outer_image = outer
-            outer_position = (top_left_x + outer_offset, top_left_y + outer_offset)
+        outer_image = outer.resize((finder_span, finder_span), RESAMPLE_FILTER)
+        outer_position = (top_left_x, top_left_y)
         canvas.alpha_composite(outer_image, outer_position)
 
-        if inner_offset >= 0:
-            inner_image = inner.resize(
-                (finder_span - 2 * inner_offset, finder_span - 2 * inner_offset),
-                RESAMPLE_FILTER,
-            )
-            inner_position = (
-                top_left_x + inner_offset,
-                top_left_y + inner_offset,
-            )
-        else:
-            inner_image = inner
-            inner_position = (top_left_x + inner_offset, top_left_y + inner_offset)
+        inner_size = min(inner.width, finder_span)
+        inner_offset = (finder_span - inner_size) // 2
+        inner_image = inner.resize((inner_size, inner_size), RESAMPLE_FILTER)
+        inner_position = (
+            top_left_x + inner_offset,
+            top_left_y + inner_offset,
+        )
         canvas.alpha_composite(inner_image, inner_position)
 
 
 def build_canvas(matrix_size: int, assets: AssetBundle, background: Tuple[int, int, int, int]) -> Tuple[Image.Image, int]:
     module_size = assets.module_size
     finder_span = 7 * module_size
-    outer = assets.finder_outer
-    margin = max(0, (outer.width - finder_span) // 2)
-    canvas_size = matrix_size * module_size + margin * 2
+    margin = 0
+    canvas_size = matrix_size * module_size
     canvas = Image.new("RGBA", (canvas_size, canvas_size), background)
     return canvas, margin
 
