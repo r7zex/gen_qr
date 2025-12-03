@@ -191,13 +191,13 @@ def version_to_modules(version: int) -> int:
 
 
 def create_qr_matrix(data: str, *, version: int | None = None) -> Tuple[list[list[bool]], int]:
-    qr = QRCode(error_correction=ERROR_CORRECT_H, box_size=1, border=4, version=version)
+    qr = QRCode(error_correction=ERROR_CORRECT_H, box_size=1, border=0, version=version)
     qr.add_data(data)
 
     try:
         qr.make(fit=version is None)
     except DataOverflowError:
-        auto_qr = QRCode(error_correction=ERROR_CORRECT_H, box_size=1, border=4)
+        auto_qr = QRCode(error_correction=ERROR_CORRECT_H, box_size=1, border=0)
         auto_qr.add_data(data)
         auto_qr.make(fit=True)
         qr = auto_qr
