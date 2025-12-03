@@ -140,10 +140,29 @@ def _load_qrcode_backend() -> Tuple[QRCodeFactory, int]:
 QRCode, ERROR_CORRECT_H = _load_qrcode_backend()
 
 
-def create_qr_matrix(data: str) -> Tuple[list[list[bool]], int]:
-    qr = QRCode(error_correction=ERROR_CORRECT_H, box_size=1, border=4)
+def modules_to_version(modules: int) -> int:
+    """Convert a requested module count to the corresponding QR version.
+
+    Standard QR codes are square with sizes: 21×21 for version 1 and
+    increasing by 4 modules per side for each subsequent version. This helper
+    validates the requested module count and returns the necessary version
+    number for the QRCode backend.
+    """
+
+    if modules < 21:
+        raise ValueError("Минимальный размер стандартного QR-кода — 21×21 модуля (версия 1)")
+    if (modules - 21) % 4 != 0:
+        raise ValueError(
+            "Размер QR-кода должен быть нечётным числом из прогрессии 21, 25, 29, … (по стандарту QR)"
+        )
+
+    return (modules - 21) // 4 + 1
+
+
+def create_qr_matrix(data: str, *, version: int | None = None) -> Tuple[list[list[bool]], int]:
+    qr = QRCode(error_correction=ERROR_CORRECT_H, box_size=1, border=4, version=version)
     qr.add_data(data)
-    qr.make(fit=True)
+    qr.make(fit=version is None)
     matrix = qr.get_matrix()
     return matrix, int(qr.border)
 
@@ -231,12 +250,20 @@ def generate_qr(
     finder_inner_asset: Path,
     finder_outer_asset: Path,
     background_color: Tuple[int, int, int, int],
+    output_size: int | None,
+    matrix_modules: int | None,
 ) -> Path:
     assets = AssetBundle.from_paths(module_asset, finder_inner_asset, finder_outer_asset)
-    matrix, border = create_qr_matrix(data)
+    matrix_version = modules_to_version(matrix_modules) if matrix_modules is not None else None
+    matrix, border = create_qr_matrix(data, version=matrix_version)
     canvas, margin = build_canvas(len(matrix), assets, background_color)
     paste_modules(canvas, matrix, assets, margin, border)
     paste_finder_patterns(canvas, len(matrix), assets, margin, border)
+
+    if output_size is not None:
+        if output_size <= 0:
+            raise ValueError("Output size must be a positive integer")
+        canvas = canvas.resize((output_size, output_size), RESAMPLE_FILTER)
 
     output.parent.mkdir(parents=True, exist_ok=True)
     canvas.save(output)
@@ -292,6 +319,21 @@ def build_argument_parser() -> argparse.ArgumentParser:
         default="#FFFFFFFF",
         help="Background color in hexadecimal (#RRGGBB or #RRGGBBAA)",
     )
+    parser.add_argument(
+        "--size",
+        type=int,
+        default=None,
+        help="Final square image size in pixels (e.g., 16 for 16x16, 32 for 32x32)",
+    )
+    parser.add_argument(
+        "--modules",
+        type=int,
+        default=None,
+        help=(
+            "Размер матрицы QR-кода в модулях (например, 21, 25, 29). "
+            "Поддерживаются только стандартные размеры QR (21 + 4*n)."
+        ),
+    )
     return parser
 
 
@@ -305,6 +347,8 @@ def main(args: list[str] | None = None) -> None:
         parsed.finder_inner,
         parsed.finder_outer,
         parsed.background,
+        parsed.size,
+        parsed.modules,
     )
     print(f"QR code saved to {output_path}")
 

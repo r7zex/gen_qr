@@ -37,10 +37,17 @@ python src/generate_qr.py "https://example.com" \
     --module assets/modules/default.txt \
     --finder-inner assets/finder_inner/default.txt \
     --finder-outer assets/finder_outer/default.txt \
-    --background "#FFFFFFFF"
+    --background "#FFFFFFFF" \
+    --size 32 \
+    --modules 25
 ```
 
 Путь в `--module`, `--finder-inner` и `--finder-outer` можно заменить на свои
 изображения. Цвет фона передаётся в формате `#RRGGBB` или `#RRGGBBAA`.
+Параметр `--size` задаёт конечное разрешение изображения в пикселях (например,
+`16` для 16×16 или `64` для 64×64). При отсутствии параметра используется
+нативный размер ассетов. Параметр `--modules` управляет количеством модулей в
+матрице QR-кода (например, 21×21 или 29×29). Допустимы только размеры из
+стандартной последовательности QR: 21, 25, 29, 33, 37 и т.д.
 
 Сгенерированный файл появится в указанном пути (`output/custom.png`).
