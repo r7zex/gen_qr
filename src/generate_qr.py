@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from typing import Callable, Protocol, Tuple, cast
 
 from PIL import Image, UnidentifiedImageError
+from qrcode.exceptions import DataOverflowError
 
 FinderPosition = Tuple[int, int]
 
@@ -159,10 +160,39 @@ def modules_to_version(modules: int) -> int:
     return (modules - 21) // 4 + 1
 
 
+def version_to_modules(version: int) -> int:
+    """Return the module count for a QR version."""
+
+    if version < 1:
+        raise ValueError("QR version must be 1 or greater")
+    return 21 + 4 * (version - 1)
+
+
 def create_qr_matrix(data: str, *, version: int | None = None) -> Tuple[list[list[bool]], int]:
     qr = QRCode(error_correction=ERROR_CORRECT_H, box_size=1, border=4, version=version)
     qr.add_data(data)
-    qr.make(fit=version is None)
+
+    try:
+        qr.make(fit=version is None)
+    except DataOverflowError as exc:
+        auto_qr = QRCode(error_correction=ERROR_CORRECT_H, box_size=1, border=4)
+        auto_qr.add_data(data)
+        auto_qr.make(fit=True)
+
+        suggested_version = getattr(auto_qr, "version", None)
+        if suggested_version is None:
+            raise ValueError("Данные не помещаются в выбранный размер QR-кода.") from exc
+
+        requested_modules = version_to_modules(int(version or 1))
+        required_modules = version_to_modules(int(suggested_version))
+        raise ValueError(
+            (
+                "Данные не помещаются в выбранный размер QR (%dx%d). "
+                "Увеличьте матрицу до минимум %dx%d или сократите данные."
+            )
+            % (requested_modules, requested_modules, required_modules, required_modules)
+        ) from exc
+
     matrix = qr.get_matrix()
     return matrix, int(qr.border)
 
