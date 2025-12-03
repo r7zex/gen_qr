@@ -34,6 +34,9 @@ FINDER_OUTER_ASSET_PATH = Path("assets/finder_outer/default.txt")
 # Background color for the QR code image. Accepts #RRGGBB or #RRGGBBAA.
 BACKGROUND_COLOR = "#FFFFFFFF"
 
+# Final square image size in pixels (set to None to use the native asset size).
+OUTPUT_SIZE = None
+
 
 def main() -> None:
     """Generate a QR code using the configuration specified above."""
@@ -48,6 +51,7 @@ def main() -> None:
         Path(FINDER_INNER_ASSET_PATH),
         Path(FINDER_OUTER_ASSET_PATH),
         background,
+        OUTPUT_SIZE,
     )
 
     print(f"QR code saved to {saved_path}")

@@ -37,10 +37,14 @@ python src/generate_qr.py "https://example.com" \
     --module assets/modules/default.txt \
     --finder-inner assets/finder_inner/default.txt \
     --finder-outer assets/finder_outer/default.txt \
-    --background "#FFFFFFFF"
+    --background "#FFFFFFFF" \
+    --size 32
 ```
 
 Путь в `--module`, `--finder-inner` и `--finder-outer` можно заменить на свои
 изображения. Цвет фона передаётся в формате `#RRGGBB` или `#RRGGBBAA`.
+Параметр `--size` задаёт конечное разрешение изображения в пикселях (например,
+`16` для 16×16 или `64` для 64×64). При отсутствии параметра используется
+нативный размер ассетов.
 
 Сгенерированный файл появится в указанном пути (`output/custom.png`).
