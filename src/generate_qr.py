@@ -231,12 +231,18 @@ def generate_qr(
     finder_inner_asset: Path,
     finder_outer_asset: Path,
     background_color: Tuple[int, int, int, int],
+    output_size: int | None,
 ) -> Path:
     assets = AssetBundle.from_paths(module_asset, finder_inner_asset, finder_outer_asset)
     matrix, border = create_qr_matrix(data)
     canvas, margin = build_canvas(len(matrix), assets, background_color)
     paste_modules(canvas, matrix, assets, margin, border)
     paste_finder_patterns(canvas, len(matrix), assets, margin, border)
+
+    if output_size is not None:
+        if output_size <= 0:
+            raise ValueError("Output size must be a positive integer")
+        canvas = canvas.resize((output_size, output_size), RESAMPLE_FILTER)
 
     output.parent.mkdir(parents=True, exist_ok=True)
     canvas.save(output)
@@ -292,6 +298,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
         default="#FFFFFFFF",
         help="Background color in hexadecimal (#RRGGBB or #RRGGBBAA)",
     )
+    parser.add_argument(
+        "--size",
+        type=int,
+        default=None,
+        help="Final square image size in pixels (e.g., 16 for 16x16, 32 for 32x32)",
+    )
     return parser
 
 
@@ -305,6 +317,7 @@ def main(args: list[str] | None = None) -> None:
         parsed.finder_inner,
         parsed.finder_outer,
         parsed.background,
+        parsed.size,
     )
     print(f"QR code saved to {output_path}")
 
