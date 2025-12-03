@@ -37,6 +37,11 @@ BACKGROUND_COLOR = "#FFFFFFFF"
 # Final square image size in pixels (set to None to use the native asset size).
 OUTPUT_SIZE = None
 
+# Number of modules in the QR matrix (must follow the QR standard progression
+# 21, 25, 29, ...). Set to None to allow the library to pick the version
+# automatically.
+MODULE_COUNT = None
+
 
 def main() -> None:
     """Generate a QR code using the configuration specified above."""
@@ -52,6 +57,7 @@ def main() -> None:
         Path(FINDER_OUTER_ASSET_PATH),
         background,
         OUTPUT_SIZE,
+        MODULE_COUNT,
     )
 
     print(f"QR code saved to {saved_path}")
